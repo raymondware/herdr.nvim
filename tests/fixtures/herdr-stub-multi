@@ -1,0 +1,52 @@
+#!/bin/sh
+# Multi-workspace stub of the herdr CLI (mirrors herdr 0.7.5 envelopes; see
+# docs/herdr-cli-facts.md). Used by F015 for the grouped agents float.
+#
+# `agent list` reports 7 agents spread over 5 buckets, chosen so every grouping
+# branch is reachable from one fixture:
+#
+#   w5  (label "rware",        number 3)  claude-1 blocked, reviewer working
+#   w7  (label "api-refactor", number 1)  codex working (name null -> display_agent)
+#   w9  (label "rware",        number 2)  dup-1 done          <- duplicate label
+#   w11 (absent from `workspace list`)    ghost-done, ghost-blocked
+#   (no workspace_id at all)              orphan idle
+#
+# So: labels resolve, the duplicate label is only distinguishable by its id, w11
+# has to fall back to its raw id AND derive its own rolled-up state (blocked wins
+# over done), and the orphan lands in the "(unknown workspace)" bucket.
+#
+# The `number` fields deliberately disagree with id order (w7=1, w9=2, w5=3): the
+# rendered group order proves the view sorts by number, not by id.
+#
+# Tab and pane ids carry the hierarchical "<workspace>:" prefix the real server
+# emits, so stripping it is observable (w5:t1 + w5:p2 -> "t1:p2").
+#
+# HERDR_STUB_WS_FAIL=1 makes `workspace list` fail exactly the way a real request
+# against a stopped server does, leaving `agent list` working: that is the
+# degraded-labels path (raw ids, agent rows intact).
+
+if [ "$1" = "agent" ] && [ "$2" = "list" ]; then
+  printf '%s\n' '{"id":"cli:agent:list","result":{"agents":[{"terminal_id":"t1","agent_status":"blocked","workspace_id":"w5","tab_id":"w5:t1","pane_id":"w5:p2","focused":false,"revision":3,"agent":"claude","name":"claude-1","title":null,"cwd":"/tmp/five"},{"terminal_id":"t2","agent_status":"working","workspace_id":"w5","tab_id":"w5:t1","pane_id":"w5:p3","focused":false,"revision":4,"agent":"claude","name":"reviewer","title":null},{"terminal_id":"t3","agent_status":"working","workspace_id":"w7","tab_id":"w7:t1","pane_id":"w7:p1","focused":true,"revision":5,"agent":"codex","name":null,"display_agent":"codex"},{"terminal_id":"t4","agent_status":"done","workspace_id":"w9","tab_id":"w9:t1","pane_id":"w9:p1","focused":false,"revision":6,"agent":"claude","name":"dup-1","title":null},{"terminal_id":"t5","agent_status":"done","workspace_id":"w11","tab_id":"w11:t1","pane_id":"w11:p1","focused":false,"revision":7,"agent":"claude","name":"ghost-done","title":null},{"terminal_id":"t6","agent_status":"blocked","workspace_id":"w11","tab_id":"w11:t1","pane_id":"w11:p2","focused":false,"revision":8,"agent":"claude","name":"ghost-blocked","title":null},{"terminal_id":"t7","agent_status":"idle","workspace_id":null,"tab_id":null,"pane_id":"p99","focused":false,"revision":9,"agent":"claude","name":"orphan","title":null}],"type":"agent_list"}}'
+  exit 0
+fi
+
+if [ "$1" = "workspace" ] && [ "$2" = "list" ]; then
+  if [ -n "$HERDR_STUB_WS_FAIL" ]; then
+    echo 'Error: Os { code: 2, kind: NotFound, message: "No such file or directory" }' >&2
+    exit 1
+  fi
+  printf '%s\n' '{"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[{"active_tab_id":"w5:t1","agent_status":"blocked","focused":false,"label":"rware","number":3,"pane_count":2,"tab_count":1,"workspace_id":"w5"},{"active_tab_id":"w7:t1","agent_status":"working","focused":true,"label":"api-refactor","number":1,"pane_count":1,"tab_count":1,"workspace_id":"w7"},{"active_tab_id":"w9:t1","agent_status":"done","focused":false,"label":"rware","number":2,"pane_count":1,"tab_count":1,"workspace_id":"w9"}]}}'
+  exit 0
+fi
+
+if [ "$1" = "agent" ] && [ "$2" = "get" ]; then
+  printf '%s\n' '{"id":"cli:agent:get","result":{"agent":{"terminal_id":"t1","agent_status":"blocked","workspace_id":"w5","tab_id":"w5:t1","pane_id":"w5:p2","focused":false,"revision":3,"agent":"claude","name":"claude-1","title":null,"terminal_title":"claude","cwd":"/tmp/five"},"type":"agent_get"}}'
+  exit 0
+fi
+
+if [ "$1" = "--version" ]; then
+  echo "herdr 0.7.5"
+  exit 0
+fi
+
+exit 0

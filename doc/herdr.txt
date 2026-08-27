@@ -1,0 +1,443 @@
+*herdr.txt*   Floating modal terminal and agent visibility for herdr
+
+Author:  Raymond Ware
+License: same terms as Neovim
+
+==============================================================================
+CONTENTS                                                      *herdr-contents*
+
+  1. Introduction .......................................... |herdr-intro|
+  2. Requirements ................................... |herdr-requirements|
+  3. Setup ................................................. |herdr-setup|
+  4. Configuration ........................................ |herdr-config|
+  5. Commands ........................................... |herdr-commands|
+  6. Keymaps ............................................. |herdr-keymaps|
+  7. Agents float ......................................... |herdr-agents|
+  8. Lualine ............................................. |herdr-lualine|
+  9. Highlights ....................................... |herdr-highlights|
+ 10. Health .............................................. |herdr-health|
+ 11. Terminal mode tips ................................ |herdr-terminal|
+
+==============================================================================
+1. INTRODUCTION                                                  *herdr-intro*
+
+herdr.nvim opens the herdr agent multiplexer (https://herdr.dev) as a floating
+modal terminal inside Neovim, and surfaces the state of the agents herdr is
+running: a status float, a statusline component, and highlight groups that
+follow your colorscheme.
+
+The plugin talks to the `herdr` CLI only. It has no plugin dependencies;
+lualine.nvim is optional and only used by |herdr-lualine|.
+
+==============================================================================
+2. REQUIREMENTS                                           *herdr-requirements*
+
+Neovim >= 0.11. The terminal is started with `jobstart({ term = true })` and
+several modules use the 4-argument `vim.validate()`; both are 0.11 features.
+On 0.10 the `term` flag is silently ignored (|:Herdr| would open an empty
+float) and `vim.validate()` raises.
+
+The `herdr` binary must be executable. Install it with: >
+
+    curl -fsSL https://herdr.dev/install.sh | sh
+
+If it is not on $PATH, set `cmd` to an absolute path (see |herdr-config|).
+
+==============================================================================
+3. SETUP                                                         *herdr-setup*
+
+                                                            *herdr.setup()*
+`require("herdr").setup({opts})` is required. It registers the commands, the
+keymaps, the highlight groups and the |VimLeavePre| cleanup, and starts agent
+polling when `agents.enabled` and `agents.auto_start` are both true.
+
+Repeated calls are idempotent: options are re-merged from the defaults rather
+than from the previous options, and a mapping the new config no longer asks
+for is removed (but only if it is still the mapping this plugin created).
+
+Before setup() runs, the only command is `:HerdrSetup`, a reminder to call
+setup(). It is deleted once you do.
+
+lazy.nvim example: >
+
+    {
+      dir = "~/herdr.nvim",
+      -- or "raymondware/herdr.nvim",
+      event = "VeryLazy",
+      keys = {
+        { "<C-g>", function() require("herdr").toggle() end,
+          desc = "herdr: toggle terminal" },
+      },
+      config = function()
+        -- lazy's `keys` owns the mapping, so setup() must not claim one too
+        require("herdr").setup({
+          keymaps = { toggle = false },
+          agents = { auto_start = false },
+        })
+      end,
+    }
+<
+Prefer `event = "VeryLazy"` over lazy-loading by `cmd`. lazy.nvim only adds a
+plugin's directory to 'runtimepath' when it loads, so under `cmd` loading
+`:checkhealth herdr` answers "no healthcheck found" and the statusline
+component stays empty until the first toggle. Loading just after startup fixes
+both, while `agents.auto_start = false` means no `herdr agent list` subprocess
+runs until |:HerdrAgents| or |:HerdrPoll| asks for agent state.
+
+==============================================================================
+4. CONFIGURATION                                                *herdr-config*
+
+Complete defaults: >
+
+    require("herdr").setup({
+      cmd = "herdr",         -- binary name, or an absolute path
+      session = nil,         -- named session; --session <name> on every call
+      extra_args = {},       -- extra argv appended to the TUI command
+
+      window = {
+        width = 0.85,        -- fraction of 'columns' (> 1 is absolute cells)
+        height = 0.85,       -- fraction of 'lines' (> 1 is absolute cells)
+        border = "rounded",  -- any nvim_open_win border, or "none"
+        title = " herdr ",   -- ignored when border = "none"
+      },
+
+      agents_window = {
+        width = 72,          -- absolute cells (<= 1 is a fraction)
+        height = 0.5,
+        border = "rounded",
+        title = " herdr agents ",
+      },
+
+      terminal = {
+        auto_insert = true,     -- insert mode on open and on re-entry
+        persist_buffer = true,  -- toggle-off hides; false kills the job
+        close_on_exit = true,   -- close the float when the client exits
+      },
+
+      keymaps = {
+        toggle = "<C-r>",           -- false disables; see |herdr-keymaps|
+        toggle_in_terminal = true,  -- also map it buffer-local in t-mode
+        agents = nil,               -- optional key for |:HerdrAgents|
+      },
+
+      agents = {
+        enabled = true,          -- false disables polling entirely
+        auto_start = true,       -- poll from setup(), not on first UI open
+        poll_interval_ms = 5000, -- between `herdr agent list` calls (min 100)
+        cli_timeout_ms = 4000,   -- per-call herdr subprocess timeout
+        max_failures = 3,        -- failures before polling self-stops (min 1)
+      },
+
+      lualine = {
+        icons = {
+          working = "●",
+          blocked = "▲",
+          done = "✓",
+          idle = "○",
+        },
+        format = "{working} {blocked} {done} {idle}",
+        hide_when_zero = true,
+        show_when_idle = false,
+      },
+    })
+<
+Notes on the non-obvious options:
+
+`terminal.persist_buffer`
+    Toggling off closes the window only; the buffer and the herdr client job
+    survive, so scrollback is preserved and the next toggle is instant. The
+    herdr server persists either way - this is about not paying to reattach.
+    `false` kills the client job on every toggle-off. |:HerdrKill| always
+    kills, regardless.
+
+`terminal.close_on_exit`
+    When the client exits, the float closes and the buffer is wiped. This
+    covers both quitting herdr and detaching with `ctrl+b q`; from Neovim's
+    side both are just "the process ended". `false` leaves the float open on a
+    dead job.
+
+`session`
+    Points the whole plugin at a named herdr session, which is a separate
+    server with its own socket. Threaded through both halves: the TUI is
+    launched as `herdr --session <name>`, and every `herdr agent list` /
+    `agent get` the poller runs carries the same flag. Unset means the default
+    session.
+
+`agents.poll_interval_ms` / `agents.max_failures`
+    Each poll is one `herdr agent list` subprocess. Intervals below 100ms are
+    clamped to 100ms, and a non-numeric value falls back to the 5000ms
+    default: 0 or negative would re-spawn herdr as fast as it can exit. An
+    unusable `cli_timeout_ms` (non-numeric, zero or negative) falls back to
+    its default the same way.
+
+    After `max_failures` consecutive failures polling stops itself, warns
+    once, and marks the state degraded; cached counts stay on screen instead
+    of blanking, and the |herdr-lualine| segment stays visible with a "!"
+    marker. `max_failures` below 1 is read as 1, not as "never give up".
+    Re-arm with `:HerdrPoll start`; a successful poll clears the degraded
+    flag. |:checkhealth| warns when the interval is below 1000ms.
+
+`agents_window`
+    Sizes the |:HerdrAgents| float. Same rule as `window`: values <= 1 are
+    fractions of the editor, larger values are absolute cells.
+
+`lualine.show_when_idle`
+    Whether the statusline segment appears when herdr knows about no agents at
+    all. Only reachable with `hide_when_zero = false`, since otherwise the
+    all-zero text is already empty.
+
+==============================================================================
+5. COMMANDS                                                   *herdr-commands*
+
+                                                                      *:Herdr*
+:Herdr              Toggle the floating herdr terminal.
+
+                                                                  *:HerdrOpen*
+:HerdrOpen          Open (or focus) the floating herdr terminal.
+
+                                                                 *:HerdrClose*
+:HerdrClose         Hide the floating terminal; the buffer and job persist by
+                    default (see `terminal.persist_buffer`).
+
+                                                                  *:HerdrKill*
+:HerdrKill          Kill the herdr client job and wipe the terminal buffer.
+
+                                                                *:HerdrAgents*
+:HerdrAgents        Toggle the agent status float (|herdr-agents|).
+
+                                                                *:HerdrStatus*
+:HerdrStatus        Print a one-line terminal/polling status summary.
+
+                                                                  *:HerdrPoll*
+:HerdrPoll [{action}]
+                    Control agent polling. {action} is `start`, `stop` or
+                    `toggle` and defaults to `toggle`. Tab-completes.
+
+Lua equivalents: `require("herdr")` exposes `toggle()`, `open()`, `close()`,
+`kill()`, `agents()`, `poll(action)` and `status()`. `status()` returns: >
+
+    {
+      available = true, -- the herdr binary is executable
+      cmd = "herdr",
+      terminal = { open = false, running = false },
+      agents = {
+        polling = true,
+        counts = { working = 0, blocked = 0, done = 0,
+                   idle = 0, unknown = 0, total = 0 },
+        degraded = false,
+        last_error = nil,
+      },
+    }
+<
+==============================================================================
+6. KEYMAPS                                                     *herdr-keymaps*
+
+                                                            *herdr-ctrl-r*
+The default toggle is <C-r>, which SHADOWS normal-mode redo (|redo|). This is
+deliberate, and |:checkhealth| reports it as an info line while it is in
+effect. Redo is still reachable with |:redo| and |g-| / |g+|. To move it: >
+
+    require("herdr").setup({ keymaps = { toggle = "<C-g>" } })
+<
+To remove it entirely (for instance when a plugin manager's lazy `keys` spec
+owns the mapping): >
+
+    require("herdr").setup({ keymaps = { toggle = false } })
+<
+The same key is also mapped buffer-locally in terminal mode inside the herdr
+float, so the key that opened it also dismisses it. If your herdr TUI needs
+`ctrl+r`, keep the normal-mode half and drop the terminal-mode half: >
+
+    require("herdr").setup({ keymaps = { toggle_in_terminal = false } })
+<
+`keymaps.agents` has no default; set it to map |:HerdrAgents|.
+
+==============================================================================
+7. AGENTS FLOAT                                                 *herdr-agents*
+
+|:HerdrAgents| opens a read-only float rendering the poller's cache. It never
+polls: it subscribes to poll updates and repaints as data lands. Closing it
+does NOT stop polling, because |herdr-lualine| may still be consuming it.
+
+The header tallies the agents ("3 agents  1 working  1 blocked  1 done", with
+idle and unknown appended only when non-zero). Under it the agents are grouped
+by the workspace they live in: >
+
+    3 agents  1 working  1 blocked  1 done
+
+     rware (w5)          ▲ blocked
+       ▲ claude-1      blocked  t1:p2       /tmp/api
+       ● reviewer      working  t1:p3       claude
+
+     api-refactor (w7)   ● working
+       ● codex         working  t1:p1       /tmp/refactor
+<
+A group header is the workspace's label with its id, then that workspace's
+rolled-up state. The id is always shown because herdr labels are NOT unique -
+several workspaces really can be called "rware", and only the id tells them
+apart. Label and rollup both come from `herdr workspace list`; a workspace
+that call does not mention falls back to its bare id and rolls up from its own
+rows instead, worst state winning.
+
+An agent row is the state icon, the display name, the state (colored), where
+the agent sits inside its workspace, and a trailing hint - the agent's cwd if
+herdr reports one, else its terminal title or kind. The location drops the
+redundant workspace prefix herdr puts on every id, so a tab of "w5:t1" and a
+pane of "w5:p2" render as "t1:p2" under the "w5" header instead of repeating
+the workspace three times. A long cwd runs off the right edge rather than
+pushing the columns out of alignment; widen `agents_window.width` to see it.
+
+Ordering is fixed so the view does not move under the cursor between polls:
+workspaces in herdr's own order (by workspace number), then any workspace the
+label lookup did not know, then a final "(unknown workspace)" group for agents
+herdr reports without a workspace at all. Inside a group the worst state comes
+first (blocked, working, done, idle, unknown), then the name.
+
+With no agents a single "No agents" line is shown and no group headers.
+Degraded polling adds a "polling stopped: ..." line above the groups.
+
+Resolving the labels costs one extra `herdr workspace list` call: one when the
+float opens and one per poll while it stays open, because a workspace's rollup
+is exactly as volatile as the rows under it. Nothing is spawned per redraw and
+nothing runs once the float is closed. A failed lookup is silent and costs
+only the labels: headers show raw workspace ids and every agent row stays
+exactly where it was.
+
+Mappings in the list float:
+
+    q       close the float
+    <Esc>   close the float
+    r       refresh now (a one-shot poll, independent of the timer)
+    <CR>    open the detail float for the agent on the cursor line
+
+<CR> runs a single `herdr agent get` and opens a smaller float above the list
+with that agent's fields, one per line: name, state, kind, focused, pane, tab,
+workspace, terminal, title, cwd. Those are the FULL ids, so the detail float
+is where to get the value to paste into a `herdr` command. Fields herdr does
+not report are omitted. The detail float is a snapshot and never repaints
+under you; `q` or <Esc> closes it and returns focus to the list. <CR> on the
+header, a workspace header, a blank separator, the degraded notice or the
+empty-state line does nothing.
+
+Repaints carry the cursor with the agent it is on, so a "polling stopped: ..."
+notice appearing above the list (or clearing again), or a poll that regroups
+the workspaces, cannot leave <CR> pointed at a row the user did not pick.
+
+==============================================================================
+8. LUALINE                                                     *herdr-lualine*
+
+The component reads only the cached counts, so it costs nothing per redraw and
+cannot throw into your statusline. Direct form: >
+
+    require("lualine").setup({
+      sections = {
+        lualine_x = { require("herdr.lualine").component(), "filetype" },
+      },
+    })
+<
+When herdr.nvim is lazy-loaded by `cmd`/`keys`, use a pcall wrapper instead:
+the direct form requires the module while your lualine config is built, which
+force-loads the plugin and throws if it is not on the runtimepath yet. >
+
+    local function herdr_component()
+      local ok, herdr = pcall(require, "herdr.lualine")
+      if not ok then
+        return ""
+      end
+      return herdr.component_text()
+    end
+<
+The wrapper gives up the component's `cond` and `color`, so there is no
+severity coloring and no auto-hide; it returns "" when there is nothing to
+show.
+
+`lualine.format` is a template. Each `{token}` expands to that state's icon
+followed by its count:
+
+    {working}   "● 2"
+    {blocked}   "▲ 1"
+    {done}      "✓ 3"
+    {idle}      "○ 4"
+    {unknown}   the bare count (no icon is defined)
+    {total}     the bare count of all agents
+
+Everything else is passed through verbatim; an unrecognized token expands to
+nothing. With `hide_when_zero` a zero count drops its whole token and the
+leftover whitespace is collapsed.
+
+{idle} is in the default format on purpose: a session whose agents are all
+idle is an ordinary state, and without an idle token `hide_when_zero` would
+collapse the template to "" and hide the segment while |:HerdrAgents| still
+listed agents.
+
+Color follows the worst state present: blocked borrows `DiagnosticError`,
+working borrows `DiagnosticWarn`, otherwise `DiagnosticOk`.
+
+                                                     *herdr-lualine-degraded*
+Degraded polling stays VISIBLE. When the poller gives up, the segment is not
+hidden - that would conceal the problem exactly when it matters. The last
+known counts are kept, prefixed with "!", in the error color: >
+
+    ! ● 2 ▲ 1
+<
+With nothing cached to show, the text is "! herdr stopped". The marker goes
+away as soon as a poll succeeds; |:HerdrPoll| start re-arms polling.
+
+Otherwise the component hides itself when polling is off, when the text is
+empty, or when there are no agents and `lualine.show_when_idle` is false.
+
+==============================================================================
+9. HIGHLIGHTS                                               *herdr-highlights*
+
+All five are created as `default` links, so a colorscheme or an explicit
+|:highlight| always wins. They are re-applied on |ColorScheme|.
+
+                                                        *hl-HerdrAgentWorking*
+HerdrAgentWorking   -> DiagnosticWarn    the `working` state
+                                                        *hl-HerdrAgentBlocked*
+HerdrAgentBlocked   -> DiagnosticError   the `blocked` state, and error lines
+                                                           *hl-HerdrAgentDone*
+HerdrAgentDone      -> DiagnosticOk      the `done` state
+                                                           *hl-HerdrAgentIdle*
+HerdrAgentIdle      -> Comment           `idle`/`unknown`, "No agents",
+                                         and detail-float labels
+                                                              *hl-HerdrHeader*
+HerdrHeader         -> Title             the agents float header line and
+                                         each workspace group title
+
+==============================================================================
+10. HEALTH                                                      *herdr-health*
+
+`:checkhealth herdr` reports:
+
+    - Neovim >= 0.11 (an error if not)
+    - whether the configured `cmd` is executable, with install advice
+    - the binary's `--version` output
+    - whether the herdr server is running (a stopped server is a warning, not
+      an error: |:Herdr| starts it on attach)
+    - an info line while `keymaps.toggle` is still <C-r> (|herdr-ctrl-r|)
+    - a warning when `agents.poll_interval_ms` is below 1000ms
+
+Every probe is synchronous with a short timeout, and each section is
+contained, so one wedged probe cannot abort the report.
+
+==============================================================================
+11. TERMINAL MODE TIPS                                        *herdr-terminal*
+
+CTRL-\ CTRL-N leaves terminal mode; that is how you reach normal mode inside
+the float to scroll back, search or yank the TUI's output.
+See |CTRL-\_CTRL-N|.
+
+<Esc> is passed straight through to herdr. No <Esc> mapping is installed, on
+purpose: the herdr TUI needs raw Escape.
+
+`ctrl+b q` detaches herdr. The client process ends, so with `close_on_exit`
+the float closes with it. The server keeps running and the agents keep
+working; the next |:Herdr| reattaches.
+
+The float re-enters insert mode when you return to it, so the TUI is
+immediately interactive (`terminal.auto_insert = false` to opt out), and it
+follows editor resizes, staying centered at its configured fraction.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

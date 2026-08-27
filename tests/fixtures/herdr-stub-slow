@@ -1,0 +1,17 @@
+#!/bin/sh
+# Slow stub: sleeps 2s before answering. Used for the in-flight guard test:
+# with a tiny poll interval, agents.lua must not stack polls, so the countfile
+# gains exactly one line per completed request window.
+
+if [ -n "$HERDR_STUB_COUNTFILE" ]; then
+  echo "call $(date +%s)" >> "$HERDR_STUB_COUNTFILE"
+fi
+
+sleep 2
+
+if [ "$1" = "agent" ] && [ "$2" = "list" ]; then
+  printf '%s\n' '{"id":"cli:agent:list","result":{"agents":[{"terminal_id":"t1","agent_status":"working","workspace_id":"w1","tab_id":"tb1","pane_id":"p1","focused":true,"revision":3,"agent":"claude","name":"claude-1","title":null},{"terminal_id":"t2","agent_status":"blocked","workspace_id":"w1","tab_id":"tb1","pane_id":"p2","focused":false,"revision":5,"agent":"codex","name":null,"display_agent":"codex"},{"terminal_id":"t3","agent_status":"done","workspace_id":"w1","tab_id":"tb2","pane_id":"p3","focused":false,"revision":2,"agent":"claude","name":"reviewer"}],"type":"agent_list"}}'
+  exit 0
+fi
+
+exit 0

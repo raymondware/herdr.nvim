@@ -1,0 +1,20 @@
+#!/bin/sh
+# Variant stub: agent list returns a single working agent named "solo".
+# Used to verify the agents UI re-renders on refresh when data changes.
+
+if [ "$1" = "agent" ] && [ "$2" = "list" ]; then
+  printf '%s\n' '{"id":"cli:agent:list","result":{"agents":[{"terminal_id":"t9","agent_status":"working","workspace_id":"w1","tab_id":"tb1","pane_id":"p9","focused":true,"revision":1,"agent":"claude","name":"solo","title":null}],"type":"agent_list"}}'
+  exit 0
+fi
+
+if [ "$1" = "agent" ] && [ "$2" = "get" ]; then
+  printf '%s\n' '{"id":"cli:agent:get","result":{"agent":{"terminal_id":"t9","agent_status":"working","workspace_id":"w1","tab_id":"tb1","pane_id":"p9","focused":true,"revision":1,"agent":"claude","name":"solo","title":null,"terminal_title":"claude","cwd":"/tmp/solo"},"type":"agent_get"}}'
+  exit 0
+fi
+
+if [ "$1" = "--version" ]; then
+  echo "herdr 0.7.5"
+  exit 0
+fi
+
+exit 0

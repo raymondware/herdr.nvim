@@ -1,0 +1,29 @@
+#!/bin/sh
+# Stub of the herdr CLI (mirrors herdr 0.7.5 output; see docs/herdr-cli-facts.md).
+# agent list -> real JSON envelope with 3 agents: working claude-1, blocked codex
+# (name null, display_agent fallback), done reviewer.
+
+if [ "$1" = "agent" ] && [ "$2" = "list" ]; then
+  printf '%s\n' '{"id":"cli:agent:list","result":{"agents":[{"terminal_id":"t1","agent_status":"working","workspace_id":"w1","tab_id":"tb1","pane_id":"p1","focused":true,"revision":3,"agent":"claude","name":"claude-1","title":null},{"terminal_id":"t2","agent_status":"blocked","workspace_id":"w1","tab_id":"tb1","pane_id":"p2","focused":false,"revision":5,"agent":"codex","name":null,"display_agent":"codex"},{"terminal_id":"t3","agent_status":"done","workspace_id":"w1","tab_id":"tb2","pane_id":"p3","focused":false,"revision":2,"agent":"claude","name":"reviewer"}],"type":"agent_list"}}'
+  exit 0
+fi
+
+if [ "$1" = "agent" ] && [ "$2" = "get" ]; then
+  printf '%s\n' '{"id":"cli:agent:get","result":{"agent":{"terminal_id":"t1","agent_status":"working","workspace_id":"w1","tab_id":"tb1","pane_id":"p1","focused":true,"revision":3,"agent":"claude","name":"claude-1","title":null,"terminal_title":"claude","cwd":"/tmp/project"},"type":"agent_get"}}'
+  exit 0
+fi
+
+if [ "$1" = "--version" ]; then
+  echo "herdr 0.7.5"
+  exit 0
+fi
+
+# status -> plain YAML-ish text (NOT JSON), works with or without a server.
+# HERDR_STUB_STATUS lets health tests exercise both server states.
+if [ "$1" = "status" ]; then
+  printf 'client:\n  version: 0.7.5\n  channel: stable\n  protocol: 17\n\n'
+  printf 'server:\n  status: %s\n' "${HERDR_STUB_STATUS:-not running}"
+  exit 0
+fi
+
+exit 0

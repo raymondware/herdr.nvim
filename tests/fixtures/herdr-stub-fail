@@ -1,0 +1,6 @@
+#!/bin/sh
+# Failure stub: mimics herdr when the server is not running.
+# Exact stderr line + exit 1 verified against herdr 0.7.5 (docs/herdr-cli-facts.md).
+
+echo 'Error: Os { code: 2, kind: NotFound, message: "No such file or directory" }' >&2
+exit 1
