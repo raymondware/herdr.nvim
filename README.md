@@ -2,6 +2,8 @@
 
 A floating modal terminal for [herdr](https://herdr.dev), the agent multiplexer, plus agent-state visibility inside Neovim: a status float, a statusline component, and highlight groups that follow your colorscheme.
 
+![Herdr running inside a Neovim floating terminal, with workspace navigation, three agent sessions, and review output](docs/images/herdr-neovim-main.png)
+
 ## Features
 
 - **Floating terminal** - One key opens the full herdr TUI in a centered float. Toggle-off hides it, so scrollback survives and reopening is instant.
@@ -11,6 +13,47 @@ A floating modal terminal for [herdr](https://herdr.dev), the agent multiplexer,
 - **Colorscheme adaptive** - Five highlight groups, all `default` links to builtin diagnostic groups, re-applied after a colorscheme switch.
 - **Health check** - `:checkhealth herdr` verifies the Neovim version, the binary, the server, and your config.
 - **No dependencies** - Pure Lua against the herdr CLI. Lualine is optional.
+
+## Screenshots
+
+Captured with Catppuccin Macchiato. Appearance varies with your Neovim, terminal, and herdr settings. The main TUI, menu, keybinds, switcher, and settings belong to herdr; the `:HerdrAgents` overview is provided by this plugin.
+
+The agent captures show real, read-only Hermes review sessions connected through herdr's explicit lifecycle-reporting API. They do not demonstrate automatic Hermes detection. Private local paths are redacted where present.
+
+<details>
+<summary>Agent overview</summary>
+
+![The HerdrAgents overview groups three review agents by workspace and displays their reported states](docs/images/herdr-neovim-agents.png)
+
+</details>
+
+<details>
+<summary>Main menu</summary>
+
+![Herdr's main menu offers settings, keybinds, config reload, and detach](docs/images/herdr-menu.png)
+
+</details>
+
+<details>
+<summary>Keyboard shortcuts</summary>
+
+![Herdr's searchable keybind reference shows global and navigation shortcuts](docs/images/herdr-keybinds.png)
+
+</details>
+
+<details>
+<summary>Workspace and terminal switcher</summary>
+
+![Herdr's Go to switcher lists workspaces and terminals with search and filter controls](docs/images/herdr-switcher.png)
+
+</details>
+
+<details>
+<summary>Settings</summary>
+
+![Herdr's settings panel shows theme choices and tabs for indicators, sound, toasts, and integrations](docs/images/herdr-settings.png)
+
+</details>
 
 ## Requirements
 
